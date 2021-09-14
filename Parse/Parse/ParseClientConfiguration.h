@@ -11,16 +11,16 @@
 
 #import <Parse/PFConstants.h>
 
+#import <Parse/PFURLSessionChallengeDelegate.h>
+
 @protocol PFFileUploadController;
 
 NS_ASSUME_NONNULL_BEGIN
 
 /**
  The `ParseMutableClientConfiguration` represents a `ParseClientConfiguration` object that can be mutated.
-
  It is only usable during the execution of the block passed to `ParseClientConfiguration.+configurationWithBlock:`,
  during which time you should set your properties on it, similar to the following:
-
  ```
  configuration.applicationId = @"<#YOUR APPLICATION ID#>"
  configuration.clientKey = @"<#YOUR CLIENT KEY#>"
@@ -46,7 +46,6 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  The URL of the server that is being used by the SDK.
  Defaults to `https://api.parse.com/1`.
-
  @note Setting this property to a non-valid URL or `nil` will throw an `NSInvalidArgumentException`.
  */
 @property (nonatomic, copy) NSString *server;
@@ -62,7 +61,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  Whether or not to enable pinning in the SDK.
-
  The default value is `NO`.
  */
 @property (nonatomic, assign, getter=isLocalDatastoreEnabled) BOOL localDatastoreEnabled PF_TV_UNAVAILABLE;
@@ -73,7 +71,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  When set, enables data sharing with an application group identifier.
-
  After enabling - Local Datastore, `PFUser.+currentUser`, `PFInstallation.+currentInstallation` and all eventually commands
  are going to be available to every application/extension in a group that have the same Parse applicationId.
  */
@@ -81,7 +78,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  When set, controls the bundle identifier of the parent bundle to connect to.
-
  @warning This property should only be set from inside an extension environment.
  */
 @property (nullable, nonatomic, copy) NSString *containingApplicationBundleIdentifier PF_WATCH_UNAVAILABLE;
@@ -96,6 +92,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSURLSessionConfiguration *URLSessionConfiguration;
 
 /**
+ A custom NSURLSessionDelegate delegate which handles the challenges
+ */
+@property (nonatomic, strong) id<PFURLSessionChallengeDelegate> urlSessionChallengeDelegate;
+
+/**
  The maximum number of retry attempts to make upon a failed network request.
  */
 @property (nonatomic, assign) NSUInteger networkRetryAttempts;
@@ -104,9 +105,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  The `ParseClientConfiguration` represents the local configuration of the SDK to connect to the server with.
-
  These configurations can be stored, copied, and compared, but cannot be safely changed once the SDK is initialized.
-
  Use this object to construct a configuration for the SDK in your application, and pass it to
  `Parse.+initializeWithConfiguration:`.
  */
@@ -143,7 +142,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  Whether or not to enable pinning in the SDK.
-
  The default value is `NO`.
  */
 @property (nonatomic, assign, readonly, getter=isLocalDatastoreEnabled) BOOL localDatastoreEnabled;
@@ -154,7 +152,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  When set, enables data sharing with an application group identifier.
-
  After enabling - Local Datastore, `PFUser.+currentUser`, `PFInstallation.+currentInstallation` and all eventually
  commands are going to be available to every application/extension in a group that have the same Parse applicationId.
  */
@@ -162,7 +159,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  When set, controls the bundle identifier of the parent bundle to connect to.
-
  @warning This property should only be set from inside an extension environment.
  */
 @property (nullable, nonatomic, copy, readonly) NSString *containingApplicationBundleIdentifier;
@@ -173,10 +169,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  The NSURLSessionConfiguration configuration used by the SDK.
-
  The default value is NSURLSessionConfiguration.defaultSessionConfiguration
  */
 @property (nonatomic, strong, readonly) NSURLSessionConfiguration *URLSessionConfiguration;
+
+/**
+ A custom NSURLSessionDelegate delegate which handles the challenges
+ */
+@property (nonatomic, strong, readonly) id<PFURLSessionChallengeDelegate> urlSessionChallengeDelegate;
 
 /**
  The maximum number of retry attempts to make upon a failed network request.
@@ -200,9 +200,7 @@ NS_ASSUME_NONNULL_BEGIN
      configuration.localDatastoreEnabled = ...;
  }];
  ```
-
  @param configurationBlock A block used to modify the created configuration.
-
  @return A newly created configuration.
  */
 + (instancetype)configurationWithBlock:(void (^)(id<ParseMutableClientConfiguration> configuration))configurationBlock;

@@ -1,16 +1,8 @@
-/**
- * Copyright (c) 2015-present, Parse, LLC.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- */
-
 #import "PFURLSession.h"
 #import "PFURLSession_Private.h"
 
 #import <Bolts/BFTaskCompletionSource.h>
+#import <Security/Security.h>
 
 #import "BFTask+Private.h"
 #import "PFCommandResult.h"
@@ -38,21 +30,25 @@ typedef void (^PFURLSessionTaskCompletionHandler)(NSData *data, NSURLResponse *r
 ///--------------------------------------
 
 - (instancetype)initWithConfiguration:(NSURLSessionConfiguration *)configuration
-                             delegate:(id<PFURLSessionDelegate>)delegate {
+                             delegate:(id<PFURLSessionDelegate>)delegate
+          urlSessionChallengeDelegate:(id<PFURLSessionChallengeDelegate>)urlSessionChallengeDelegate {
     // NOTE: cast to id suppresses warning about designated initializer.
     return [(id)self initWithURLSession:[NSURLSession sessionWithConfiguration:configuration
                                                                      delegate:self
                                                                 delegateQueue:nil]
-                               delegate:delegate];
+                               delegate:delegate
+            urlSessionChallengeDelegate:urlSessionChallengeDelegate];
 }
 
 - (instancetype)initWithURLSession:(NSURLSession *)session
-                          delegate:(id<PFURLSessionDelegate>)delegate {
+                          delegate:(id<PFURLSessionDelegate>)delegate
+       urlSessionChallengeDelegate:(id<PFURLSessionChallengeDelegate>)urlSessionChallengeDelegate{
     self = [super init];
     if (!self) return nil;
 
     _delegate = delegate;
     _urlSession = session;
+    _urlSessionChallengeDelegate = urlSessionChallengeDelegate;
 
     _sessionTaskQueue = dispatch_queue_create("com.parse.urlSession.tasks", DISPATCH_QUEUE_SERIAL);
 
@@ -63,13 +59,15 @@ typedef void (^PFURLSessionTaskCompletionHandler)(NSData *data, NSURLResponse *r
 }
 
 + (instancetype)sessionWithConfiguration:(NSURLSessionConfiguration *)configuration
-                                delegate:(id<PFURLSessionDelegate>)delegate {
-    return [[self alloc] initWithConfiguration:configuration delegate:delegate];
+                                delegate:(id<PFURLSessionDelegate>)delegate
+             urlSessionChallengeDelegate:(id<PFURLSessionChallengeDelegate>)urlSessionChallengeDelegate {
+    return [[self alloc] initWithConfiguration:configuration delegate:delegate urlSessionChallengeDelegate:urlSessionChallengeDelegate];
 }
 
 + (instancetype)sessionWithURLSession:(nonnull NSURLSession *)session
-                             delegate:(id<PFURLSessionDelegate>)delegate {
-    return [[self alloc] initWithURLSession:session delegate:delegate];
+                             delegate:(id<PFURLSessionDelegate>)delegate
+          urlSessionChallengeDelegate:(id<PFURLSessionChallengeDelegate>)urlSessionChallengeDelegate {
+    return [[self alloc] initWithURLSession:session delegate:delegate urlSessionChallengeDelegate:urlSessionChallengeDelegate];
 }
 
 ///--------------------------------------
@@ -255,6 +253,42 @@ didReceiveResponse:(NSURLResponse *)response
  willCacheResponse:(NSCachedURLResponse *)proposedResponse
  completionHandler:(void (^)(NSCachedURLResponse *cachedResponse))completionHandler {
     completionHandler(nil); // Prevent any caching for security reasons
+}
+
+///--------------------------------------
+#pragma mark - NSURLSessionDelegate
+///--------------------------------------
+
+- (void)URLSession:(NSURLSession *)session
+didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+    NSString *authMethod = [[challenge protectionSpace] authenticationMethod];
+    
+    if (![authMethod isEqualToString:NSURLAuthenticationMethodClientCertificate]) {
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, NULL);
+        return;
+    }
+    
+    NSString *cerPath = [[NSBundle mainBundle] pathForResource:@"hugoapp" ofType:@"p12"];
+    NSData *PKCS12Data = [NSData dataWithContentsOfFile:cerPath];
+    CFDataRef inPKCS12Data = (CFDataRef)CFBridgingRetain(PKCS12Data);
+    CFStringRef password = CFSTR("ks-3801");
+    
+    const void *keys[] = { kSecImportExportPassphrase };
+    const void *values[] = { password };
+    CFDictionaryRef optionsDictionary = CFDictionaryCreate(NULL, keys, values, 1, NULL, NULL);
+    CFArrayRef items = CFArrayCreate(NULL, 0, 0, NULL);
+    OSStatus ret = SecPKCS12Import(inPKCS12Data, optionsDictionary, &items);
+    
+    CFDictionaryRef identityDict = CFArrayGetValueAtIndex(items, 0);
+    SecIdentityRef identity = (SecIdentityRef)CFDictionaryGetValue(identityDict, kSecImportItemIdentity);
+    
+    NSURLCredential* credential = [NSURLCredential credentialWithIdentity: identity
+                                                             certificates: NULL
+                                                              persistence: NSURLCredentialPersistenceForSession];
+    
+    [[challenge sender] useCredential:credential forAuthenticationChallenge:challenge];
+    completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
 }
 
 @end
